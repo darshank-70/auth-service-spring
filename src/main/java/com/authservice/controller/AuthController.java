@@ -2,6 +2,7 @@ package com.authservice.controller;
 
 import com.authservice.dto.request.LoginRequest;
 import com.authservice.dto.request.RegisterRequest;
+import com.authservice.dto.response.ApiResponse;
 import com.authservice.dto.response.AuthResponse;
 import com.authservice.entity.RefreshToken;
 import com.authservice.entity.User;
@@ -10,11 +11,18 @@ import com.authservice.security.TokenBlacklistService;
 import com.authservice.service.AuthService;
 import com.authservice.service.RefreshTokenService;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseCookie;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.Map;
 
 @RestController
@@ -27,13 +35,38 @@ public class AuthController {
     private final RefreshTokenService refreshTokenService;
     private final TokenBlacklistService tokenBlacklistService;
     @PostMapping("/register")
-    public AuthResponse register(@Valid @RequestBody RegisterRequest request) {
+    public ResponseEntity<ApiResponse<Void>> register(@Valid @RequestBody RegisterRequest request) {
         System.out.println("REQUEST RECIEVED" +  request.toString());
-        return authService.register(request);
+        authService.register(request);
+        return ResponseEntity.ok(
+                ApiResponse.<Void>builder()
+                        .timestamp(LocalDateTime.now())
+                        .message("SUCCESS").success(true)
+                        .build()
+        );
     }
     @PostMapping("/login")
-    public AuthResponse login(@RequestBody LoginRequest request) {
-        return authService.login(request);
+    public ResponseEntity<ApiResponse<AuthResponse>> login(@RequestBody LoginRequest request, HttpServletResponse response) {
+        AuthResponse authResponse = authService.login(request);
+        ResponseCookie cookie = ResponseCookie.from(HttpHeaders.SET_COOKIE,authResponse.getRefreshToken())
+                .sameSite("Strict")
+                .httpOnly(true)
+                .maxAge(Duration.ofDays(7))
+                .path("/")
+                .secure(true)
+                .build();
+        response.addHeader(HttpHeaders.SET_COOKIE, cookie.toString());
+        authResponse.setRefreshToken(null);
+        return ResponseEntity.ok(
+                ApiResponse.<AuthResponse>builder()
+                        .data(authResponse)
+                        .success(true)
+                        .message("Login Success")
+                        .timestamp(LocalDateTime.now())
+                        .build()
+        );
+
+
     }
 
     @GetMapping("/admin")
